@@ -6,6 +6,7 @@ import requests
 import json
 from bs4 import BeautifulSoup
 import html
+import datetime as dt
 
 HELP = ('Usage: scrape.py <link> -<command> <term>\n'
         'Eschewing commands will print entire soup.\n'
@@ -13,13 +14,24 @@ HELP = ('Usage: scrape.py <link> -<command> <term>\n'
         '     -tags             : Retruns all tag names\n'
         '     -tag  <tag name>  : Returns all elements containing attribute\n'
         '     -find <string>    : Retruns results containing \n'
-        '     -save <filename>  : Saves data to a .txt file.')
+        '     -max <int | none> : Set the maximum number of characters to display from -find (default 100)\n'
+        '     -save <filename>  : Saves data to a .txt file. Default filename is SCRAPE_<slug>_<timestamp>.txt')
 
 class Scrape:
     def __init__(self):
         self.commands = self.validate_inputs()
         self.data = []
+        char_max = 100
         if self.commands:
+            if '-max' in self.commands:
+                if str(self.commands['-max']).lower() == 'none':
+                    char_max = -1
+                else:
+                    try:
+                        char_max = int(self.commands['-max'])
+                    except ValueError:
+                        sys.exit('Error: -max characters must be an integer.')
+
             if '-tags' in self.commands:
                 tags = [tag.name for tag in self.get_soup().find_all()]
                 tags = list(dict.fromkeys(tags))
@@ -42,7 +54,6 @@ class Scrape:
                             find_list.append(itm)
                     if not find_list:
                         sys.exit(f'No results for search \'{search}\'.')
-
                 if find_list:
                     self.data = find_list
                 else:
@@ -53,10 +64,13 @@ class Scrape:
                 print('Parsing...')
                 tags = [tag.name for tag in soup.find_all()]
                 tags = list(dict.fromkeys(tags))
+                elipsis = '...'
+                if char_max == -1:
+                    elipsis = ''
                 for tag in tags:
                     for itm in soup.find_all(tag):
-                        if self.commands['-find'] in itm:
-                            self.data.append(str(itm)[:100] + '...')
+                        if self.commands['-find'] in str(itm):
+                            self.data.append(str(itm)[:char_max] + elipsis)
 
             if '-save' in self.commands:
                 if not self.data:
@@ -96,6 +110,9 @@ class Scrape:
                         raise IndexError
                     commands[arg] = term
                 except IndexError:
+                    if arg == '-save':
+                        commands[arg] = None
+                        continue
                     sys.exit(f'Error: Command \'{arg}\' missing <term>')
         if not commands:
             #sys.exit('No commands passed.')
@@ -109,17 +126,22 @@ class Scrape:
         return soup
 
     def save_meta(self, data):
-        print(f'Saving to file \'{outfile}\'...', flush=True, end='')
         outfile = self.commands['-save']
+        if not outfile:
+            link = self.link.split('/')[-1]
+            stamp = dt.datetime.now().strftime('%m%d%Y_%H%M%S')
+            outfile = 'SCRAPE_' + link + '_'+ stamp + '.txt' 
         if not outfile.endswith('.txt'):
             outfile = outfile + '.txt'
         
+        print(f'Saving to file \'{outfile}\'...', flush=True, end='')
+        data = '\r'.join(data)
         with open(outfile, 'w') as f:
             try:
-                f.writelines(str(data))
+                f.write(str(data))
             except UnicodeEncodeError:
                 data = html.unescape(data)
-                f.writelines(str(data))
+                f.write(str(data))
 
 
 def get_yt_meta(link):
